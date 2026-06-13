@@ -1,0 +1,67 @@
+name: HIRA implant prices (심평원 임플란트 비급여가)
+
+# Actions 탭 → "Run workflow" (HIRA_SERVICE_KEY secret 필요)
+#   선택: HIRA_SIDO_CD / HIRA_SGGU_CD 입력 시 지역 일괄조회, 미입력 시 치과명으로 1곳씩 조회
+on:
+  workflow_dispatch:
+    inputs:
+      sidoCd:
+        description: "심평원 시도코드(선택)"
+        default: ""
+      sgguCd:
+        description: "심평원 시군구코드(연수구, 선택)"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: clinics-write
+  cancel-in-progress: false
+
+jobs:
+  hira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: claude/dental-clinic-map-incheon-i4t5sj
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Collect HIRA implant non-covered prices
+        env:
+          HIRA_SERVICE_KEY: ${{ secrets.HIRA_SERVICE_KEY }}
+          HIRA_SIDO_CD: ${{ inputs.sidoCd }}
+          HIRA_SGGU_CD: ${{ inputs.sgguCd }}
+        run: node hira.js
+      - name: Geocode new clinics (좌표 없는 신규삽입분만)
+        continue-on-error: true
+        env:
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
+          ONLY_MISSING: "1"
+        run: node geocode.js
+      - name: Rebuild pages & sitemap, test
+        run: |
+          node build.js
+          node test.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add clinics.js region/ sitemap.xml
+          if git diff --staged --quiet; then
+            echo "변경 없음"
+          else
+            git commit -m "심평원 임플란트 비급여가 수집 (Actions)"
+            ok=0
+            for i in 1 2 3 4 5; do
+              git fetch origin claude/dental-clinic-map-incheon-i4t5sj || true
+              if git rebase origin/claude/dental-clinic-map-incheon-i4t5sj && git push origin HEAD:claude/dental-clinic-map-incheon-i4t5sj; then ok=1; break; fi
+              git rebase --abort || true
+              sleep $((i * 5))
+            done
+            [ "$ok" = 1 ] || { echo "push 실패(동시 변경)"; exit 1; }
+          fi

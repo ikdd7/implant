@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>인천 연수구 임플란트 치과 지도 — 비급여 가격 한눈에 | 임플란트 비용</title>
+<meta name="description" content="인천 연수구 치과의 임플란트 비급여가(1치당)를 카카오 지도 위에서 위치·가격으로 비교하세요. 심평원 비급여정보 + 홈페이지 게시가 기반." />
+<link rel="canonical" href="https://ikdd7.github.io/implant/map.html" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="인천 연수구 임플란트 치과 지도 — 비급여 가격" />
+<meta property="og:locale" content="ko_KR" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦷</text></svg>" />
+<script>
+  // 카카오 지도 JavaScript 키 (공개 키 — 도메인 제한으로 보호). 비우면 목록 폴백.
+  // 발급: developers.kakao.com → 내 애플리케이션 → JavaScript 키
+  // 도메인 등록: 앱 → 플랫폼 → Web → https://ikdd7.github.io 추가
+  window.KAKAO_JS_KEY = "";
+</script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="mapbody">
+
+<div id="map"></div>
+<div id="mapFallback"><div style="margin:auto;width:100%;max-width:520px"><div id="fbList"></div></div></div>
+
+<div id="offlineBanner">🗺️ 카카오 지도를 불러오지 못해 ‘목록’으로 표시 중이에요. (지도 키 설정/도메인 등록 후 표시)</div>
+
+<div class="map-top">
+  <div class="row1">
+    <span class="ttl">🦷 연수구 임플란트 치과 지도</span>
+    <a class="back" href="method.html" style="margin-left:auto">방법론</a>
+  </div>
+  <div class="msearch" id="msearch">
+    <span class="qicon">🔍</span>
+    <input id="qInput" type="text" placeholder="치과 검색 (예: 송도, ○○치과)" autocomplete="off" />
+    <div id="qResults" class="qresults"></div>
+  </div>
+  <div class="mfilters">
+    <div class="grp"><button class="chip" id="fFav">💗 찜</button></div>
+    <div class="grp"><button class="chip" id="fPriced">💰 가격있는 곳만</button></div>
+    <div class="grp"><button class="chip" id="fVer">✅ 검증만</button></div>
+  </div>
+</div>
+
+<div class="map-stats">
+  <div class="n"><span id="mStatN">–</span><small>곳</small></div>
+  <div><small>임플란트 1치 중앙값</small> <b id="mStatPrice">–</b></div>
+</div>
+
+<div class="map-legend">임플란트가(1치)<div class="bar"></div><div style="display:flex;justify-content:space-between"><span>저렴</span><span>비쌈</span></div><div style="margin-top:4px">○ 회색 = 가격 미확인</div></div>
+
+<button id="favOpen" class="favfab">💗 내 찜·비교 <span id="favN">0</span></button>
+
+<div id="favPanel" class="favpanel">
+  <div class="fp-head"><b>💗 내 찜 · 비교</b><button id="favClose" class="fp-x" aria-label="닫기">×</button></div>
+  <div class="fp-guests">임플란트 <input id="fpCount" inputmode="numeric" maxlength="2" /> 개 기준 예상 비용</div>
+  <div id="fpList" class="fp-list"></div>
+  <button id="fpShare" class="fp-share">📤 카톡으로 공유하기</button>
+</div>
+
+<script src="clinics.js"></script>
+<script src="regions.js"></script>
+<script src="stats.js"></script>
+<script src="map.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://ikdd7.github.io/implant/sitemap.xml
