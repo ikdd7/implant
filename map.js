@@ -308,13 +308,20 @@
       DATA.forEach(function (d) { b.extend(new kakao.maps.LatLng(d.lat, d.lng)); });
       if (DATA.length) map.setBounds(b);
     } catch (e) {}
+    if (USING_SAMPLE) {
+      var ob = $("offlineBanner");
+      if (ob) { ob.textContent = "ℹ️ 아직 실데이터가 없어 예시(샘플)로 표시 중이에요. 수집(harvest/hira) 후 실제 치과로 채워집니다."; ob.style.display = "block"; }
+    }
   }
 
   // ── 폴백(목록) ──
   function initFallback() {
     $("map").style.display = "none";
     var ms = $("msearch"); if (ms) ms.style.display = "none";
-    $("offlineBanner").style.display = "block";
+    var ob = $("offlineBanner");
+    ob.textContent = "🗺️ 카카오 지도를 불러오지 못했어요. 카카오 개발자 콘솔 → 플랫폼 → Web 에 도메인(https://ikdd7.github.io) 등록 후 새로고침 해주세요." +
+      (USING_SAMPLE ? " (현재 예시 데이터 표시 중)" : "");
+    ob.style.display = "block";
     var fb = $("mapFallback"); fb.style.display = "flex";
     buildFilters(renderList); renderList();
     function renderList() {
@@ -374,12 +381,6 @@
     var fn = $("favN"); if (fn) fn.textContent = favCount();
   }
   initPanel();
-
-  // 예시 데이터 사용 중이면 배너로 안내
-  if (USING_SAMPLE) {
-    var ob = $("offlineBanner");
-    if (ob) { ob.textContent = "ℹ️ 아직 실데이터가 없어 예시(샘플)로 표시 중이에요. 수집(harvest/hira) 후 실제 치과로 채워집니다."; ob.style.display = "block"; }
-  }
 
   // ── SDK 로드 ──
   function loadKakaoSDK(ok, fail) {
