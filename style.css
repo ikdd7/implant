@@ -362,3 +362,6 @@ footer{border-top:1px solid var(--line);margin-top:28px;padding:24px 0 40px;colo
 .fb-n{font-weight:700}
 .fb-p{font-weight:800;white-space:nowrap}
 .fb-p small{font-weight:500;opacity:.7}
+
+/* 가격 출처 주의문구 (심평원 신고가 ≠ 실제가) */
+.kk-caveat{margin:6px 0 2px;font-size:.74rem;line-height:1.4;color:#c9a227;opacity:.95}

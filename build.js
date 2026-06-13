@@ -125,6 +125,7 @@ function districtPage(district, recs, all) {
     <div class="gateover"><button type="button" class="sharebtn alt" id="gateBtn">🔓 전체 보기</button>
       <p class="cap">집계는 누구나, 치과별 상세는 한 번 더 눌러 확인하세요.</p></div>
   </div>
+  <p class="cap" style="margin-top:8px">※ <b>심평원 신고가와 실제 진료가·이용자 경험가는 다를 수 있습니다.</b> 출처(심평원/홈페이지)를 표에 함께 표기하니 참고용으로만 봐주세요.</p>
 
   <h2 style="margin:26px 0 12px;font-size:1.2rem">자주 묻는 질문</h2>
   <details open><summary>${esc(district)} 임플란트 가격은 얼마인가요?</summary><div class="a">1치당 비급여가 중앙값은 ${esc(medTxt)}이며, 대부분 ${esc(Stats.manwon(q1))}~${esc(Stats.manwon(q3))}원 사이입니다. (치과 ${recs.length}곳 기준, 이상치 제외)</div></details>

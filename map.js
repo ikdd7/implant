@@ -10,10 +10,22 @@
   var $ = function (id) { return document.getElementById(id); };
   function hasPrice(d) { return d.price >= S.PRICE_MIN && d.price <= S.PRICE_MAX; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
-  function sourceLabel(d) {
-    var s = (d.priceSources || d.source || "");
-    if (/hira/i.test(s)) return "심평원 비급여";
-    if (/site\//i.test(s)) return "홈페이지 게시가";
+  // 가격 출처 종류 분류(여러 종류가 섞일 수 있음). 심평원 신고가 ≠ 실제가일 수 있어 구분해 표기.
+  function sourceTypes(d) {
+    var s = (d.priceSources || d.source || ""), t = [];
+    if (/hira/i.test(s)) t.push("심평원");
+    if (/site\//i.test(s)) t.push("홈페이지");
+    if (/report\//i.test(s)) t.push("이용자 제보");
+    return t;
+  }
+  function sourceLabel(d) { return sourceTypes(d).join("·"); }
+  // 출처별 주의문구 — 심평원 신고가/홈페이지 게시가/제보가 서로, 그리고 실제 진료가와 다를 수 있음
+  function priceCaveat(d) {
+    var t = sourceTypes(d);
+    if (t.length > 1) return "※ " + t.join("·") + " 정보가 섞여 있어요. 출처마다, 그리고 실제 진료가와 다를 수 있습니다.";
+    if (t[0] === "심평원") return "※ 심평원 신고가 기준 — 실제 진료가/이용자 경험가와 다를 수 있습니다.";
+    if (t[0] === "홈페이지") return "※ 홈페이지 게시가 — 시점·조건(이벤트가 등)에 따라 다를 수 있습니다.";
+    if (t[0] === "이용자 제보") return "※ 이용자 제보가 — 검증 전이며 실제와 다를 수 있습니다.";
     return "";
   }
 
@@ -130,8 +142,8 @@
     var sub = [d.region + (d.district ? " " + d.district : ""), "치과"].join(" · ");
     var srcLab = sourceLabel(d);
     var chips = [];
+    if (srcLab) chips.push("출처: " + srcLab);
     if (d.nobs > 1) chips.push(d.nobs + "개 소스 평균");
-    if (srcLab) chips.push(srcLab);
     if (d.verified) chips.push("✅ 검증");
     var chipHtml = chips.length ? '<div class="kk-chips">' + chips.map(function (c) { return "<span>" + esc(c) + "</span>"; }).join("") + "</div>" : "";
     var body;
@@ -139,7 +151,8 @@
       body = '<div class="kk-pricerow">' +
           '<div class="kk-pb meal"><div class="kk-pblab">임플란트 1치당</div><div class="kk-pbval">' + won(d.price) + "</div></div>" +
         "</div>" +
-        '<div class="kk-total">' + COUNT + "개 예상 ≈ <b>" + manwon(totalCost(d)) + "원</b> <small>(부가수술·뼈이식 별도일 수 있음)</small></div>" + chipHtml;
+        '<div class="kk-total">' + COUNT + "개 예상 ≈ <b>" + manwon(totalCost(d)) + "원</b> <small>(부가수술·뼈이식 별도일 수 있음)</small></div>" +
+        '<div class="kk-caveat">' + esc(priceCaveat(d)) + "</div>" + chipHtml;
     } else {
       body = '<div class="kk-soon">💬 임플란트 비급여가 수집 중</div><div class="kk-soonsub">게시가/심평원 정보가 확인되면 표시돼요 🙏</div>' + chipHtml;
     }
