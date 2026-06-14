@@ -158,7 +158,36 @@ function sitemap(slugs) {
   return x + "</urlset>\n";
 }
 
+// 수동 오버라이드(overrides.js) 적용 — 매 빌드마다 재적용되어 재수집에도 안 덮임
+function applyOverrides() {
+  let overrides = [];
+  try { overrides = require("./overrides.js"); } catch (e) { return; }
+  if (!overrides.length) return;
+  const store = require("./store.js");
+  const { matchClinic } = require("./pricemerge.js");
+  const hostOf = (u) => { try { return new URL(u).host; } catch (e) { return "manual"; } };
+  const { clinics, sample } = store.load();
+  let n = 0;
+  overrides.forEach((o) => {
+    if (!o || !o.name) return;
+    const c = clinics.find((x) => matchClinic(x, { name: o.name, district: o.district || "연수구" }));
+    if (!c) { console.warn("  오버라이드 매칭 실패:", o.name); return; }
+    if (o.price) c.price = o.price;
+    if (o.min && o.max) { c.priceMin = o.min; c.priceMax = o.max; } else { delete c.priceMin; delete c.priceMax; }
+    if (o.mats) c.mats = o.mats; else delete c.mats;
+    const h = o.url ? hostOf(o.url) : "manual";
+    c.source = "site/" + h;
+    c.priceSources = (c.priceSources ? c.priceSources.split("|").filter((s) => !/^site\//.test(s)).join("|") : "");
+    c.priceSources = (c.priceSources ? c.priceSources + "|" : "") + "site/" + h;
+    if (o.url) c.priceUrl = o.url;
+    c.verified = true;
+    n++;
+  });
+  if (n) { store.write(clinics, sample); console.log("수동 오버라이드 적용: " + n + "곳"); }
+}
+
 function main() {
+  applyOverrides();
   const data = loadData();
   const byD = {};
   data.forEach((d) => (byD[d.district] = byD[d.district] || []).push(d));
