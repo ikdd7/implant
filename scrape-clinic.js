@@ -2,10 +2,10 @@
  * scrape-clinic.js — 치과 홈페이지의 임플란트 비급여가(수가표) 수집 → 있으면 가격 덮어쓰기
  *   대상: clinics.js 에서 homepage 가 있는 치과 (homepages.js로 채움)
  *   방법: 홈페이지 + 비급여/수가/가격 하위페이지를 렌더 →
- *         ① HTML 텍스트  ② PDF(텍스트→없으면 OCR)  ③ 이미지(OCR) 에서 "임플란트 + 금액" 추출
+ *         ① HTML 텍스트  ② 이미지(Playwright 요소 스크린샷 → OCR, 핫링크차단 우회)  ③ PDF(텍스트→없으면 OCR)
  *   결과: 찾으면 price/priceMin/priceMax 덮어쓰기, source=site/<host>, 수가표 링크(priceUrl) 저장.
- *   실행: node scrape-clinic.js   (Playwright + poppler-utils + tesseract-ocr[-kor] 필요)
- *   옵션: SCRAPE_LIMIT=동시처리수(기본 전체), SCRAPE_ONLY="치과명" (특정 1곳 테스트)
+ *   실행: node scrape-clinic.js   (Playwright + poppler-utils + tesseract-ocr[-kor])
+ *   옵션: SCRAPE_ONLY="치과명", SCRAPE_LIMIT=N
  */
 const { chromium } = require("playwright");
 const { execFileSync } = require("child_process");
@@ -15,20 +15,25 @@ const store = require("./store.js");
 
 const PRICE_MIN = 300000, PRICE_MAX = 6000000;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "hp-"));
+let tmpN = 0;
+const tmpFile = (ext) => path.join(TMP, "f" + (tmpN++) + ext);
 
-// ── 텍스트에서 임플란트 금액 추출 ──
 function wonOf(numStr, unit) { let n = parseInt(String(numStr).replace(/,/g, ""), 10); if (/만/.test(unit)) n *= 10000; return n; }
 function extractImplant(text) {
   if (!text) return [];
   const t = String(text).replace(/[\n\r\t]+/g, " ").replace(/ +/g, " ");
   const out = [];
-  const re = /임[\s]?플[\s]?란[\s]?트[^.]{0,50}?([0-9][0-9,]{1,})\s*(만원|만|원)/g;
+  const re = /임\s?플\s?란\s?트[^.]{0,50}?([0-9][0-9,]{1,})\s*(만원|만|원)/g;
   let m; while ((m = re.exec(t))) { const n = wonOf(m[1], m[2]); if (n >= PRICE_MIN && n <= PRICE_MAX) out.push(n); }
   return out;
 }
 function median(a) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); }
+const SILENT = { maxBuffer: 20e6, timeout: 60000, stdio: ["ignore", "pipe", "ignore"] };
+function tryExec(cmd, args) { try { return execFileSync(cmd, args, SILENT).toString(); } catch (e) { return ""; } }
+function ocr(img) { return tryExec("tesseract", [img, "stdout", "-l", "kor+eng", "--psm", "6"]); }
+function isImage(f) { try { const b = fs.readFileSync(f).slice(0, 4); return (b[0] === 0xFF && b[1] === 0xD8) || (b[0] === 0x89 && b[1] === 0x50); } catch (e) { return false; } } // jpg/png
+function isPdf(f) { try { return fs.readFileSync(f).slice(0, 4).toString() === "%PDF"; } catch (e) { return false; } }
 
-// ── 파일 다운로드(리다이렉트 1회, 8MB 제한) ──
 function download(url, dest) {
   return new Promise((res) => {
     try {
@@ -44,13 +49,9 @@ function download(url, dest) {
     } catch (e) { res(false); }
   });
 }
-function tryExec(cmd, args) { try { return execFileSync(cmd, args, { maxBuffer: 20e6, timeout: 60000 }).toString(); } catch (e) { return ""; } }
-function pdfText(file) { return tryExec("pdftotext", ["-layout", file, "-"]); }
-function pdfToPngs(file, prefix) { tryExec("pdftoppm", ["-r", "150", "-png", "-f", "1", "-l", "5", file, prefix]); return fs.readdirSync(TMP).filter((f) => f.startsWith(path.basename(prefix))).map((f) => path.join(TMP, f)); }
-function ocr(img) { return tryExec("tesseract", [img, "stdout", "-l", "kor+eng", "--psm", "6"]); }
 
 const HINT = /(비급여|수가|가격|요금|비용|임플란트|진료안내|치료비)/;
-function host(u) { try { return new URL(u).host; } catch (e) { return ""; } }
+const host = (u) => { try { return new URL(u).host; } catch (e) { return ""; } };
 
 (async () => {
   const { clinics, sample } = store.load();
@@ -64,15 +65,11 @@ function host(u) { try { return new URL(u).host; } catch (e) { return ""; } }
   let updated = 0;
 
   for (const c of targets) {
-    const found = [];
-    let priceUrl = "";
-    const base = c.homepage;
-    const page = await ctx.newPage();
-    page.setDefaultTimeout(25000);
+    const found = []; let priceUrl = ""; const base = c.homepage;
+    const page = await ctx.newPage(); page.setDefaultTimeout(25000);
     try {
       await page.goto(base, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await page.waitForTimeout(1500);
-      // 방문할 페이지: 홈 + 비급여/수가 관련 동일호스트 링크 최대 5
+      await page.waitForTimeout(2000); // 핫링크/봇 챌린지(JS) 처리 대기
       let links = [];
       try {
         links = await page.evaluate((H) => {
@@ -81,59 +78,62 @@ function host(u) { try { return new URL(u).host; } catch (e) { return ""; } }
             const t = (a.textContent || "") + " " + a.getAttribute("href");
             if (new RegExp(H).test(t)) { try { const u = new URL(a.href); if (u.host === h) out.push(u.href); } catch (e) {} }
           });
-          return out.slice(0, 12);
+          return out;
         }, HINT.source);
       } catch (e) {}
-      const visit = [base].concat(links.filter((u, i, arr) => arr.indexOf(u) === i).slice(0, 5));
+      const visit = [base].concat(links.filter((u, i, a) => a.indexOf(u) === i).slice(0, 5));
 
+      let imgBudget = 12;
       for (const url of visit) {
-        if (url !== base) { try { await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 }); await page.waitForTimeout(800); } catch (e) { continue; } }
-        // 1) HTML 텍스트(프레임 포함)
-        for (const fr of page.frames()) { try { const tx = await fr.evaluate(() => document.body && document.body.innerText); const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {} }
-        // 2) 자산(pdf/이미지) 수집 — 비급여/수가 맥락일 때
-        let assets = [];
-        try {
-          assets = await page.evaluate(() => {
-            const out = [];
-            document.querySelectorAll("a[href]").forEach((a) => { if (/\.pdf(\?|$)/i.test(a.href)) out.push({ t: "pdf", u: a.href }); });
-            document.querySelectorAll("img[src]").forEach((im) => { const s = im.src; if (/\.(png|jpe?g)(\?|$)/i.test(s) && (im.naturalWidth > 300 || im.width > 300)) out.push({ t: "img", u: s, alt: (im.alt || "") }); });
-            return out;
-          });
-        } catch (e) {}
-        // pdf 우선(최대 3)
-        for (const a of assets.filter((x) => x.t === "pdf").slice(0, 3)) {
-          const f = path.join(TMP, "d" + Math.random().toString(36).slice(2) + ".pdf");
-          if (!(await download(a.u, f))) continue;
-          let ps = extractImplant(pdfText(f));
-          if (!ps.length) { for (const png of pdfToPngs(f, f + "-p")) { ps = extractImplant(ocr(png)); if (ps.length) break; } }
-          if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = a.u; }
+        if (url !== base) { try { await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 }); await page.waitForTimeout(1200); } catch (e) { continue; } }
+        for (const fr of page.frames()) {
+          // 1) 텍스트
+          try { const tx = await fr.evaluate(() => document.body && document.body.innerText); const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
+          // 2) 이미지 요소 스크린샷 → OCR (핫링크차단 우회)
+          if (imgBudget > 0) {
+            let imgs = []; try { imgs = await fr.$$("img"); } catch (e) {}
+            for (const h of imgs) {
+              if (imgBudget <= 0) break;
+              let box = null; try { box = await h.boundingBox(); } catch (e) {}
+              if (!box || box.width < 300 || box.height < 80) continue;
+              imgBudget--;
+              const f = tmpFile(".png");
+              try { await h.screenshot({ path: f }); } catch (e) { continue; }
+              const ps = extractImplant(ocr(f));
+              if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; }
+            }
+          }
+          // 3) PDF 링크
+          let pdfs = []; try { pdfs = await fr.evaluate(() => Array.prototype.slice.call(document.querySelectorAll('a[href]')).map((a) => a.href).filter((u) => /\.pdf(\?|$)/i.test(u))); } catch (e) {}
+          for (const pu of pdfs.slice(0, 3)) {
+            const f = tmpFile(".pdf");
+            if (!(await download(pu, f)) || !isPdf(f)) continue;
+            let ps = extractImplant(tryExec("pdftotext", ["-layout", f, "-"]));
+            if (!ps.length) {
+              tryExec("pdftoppm", ["-r", "150", "-png", "-f", "1", "-l", "4", f, f + "-p"]);
+              for (const png of fs.readdirSync(TMP).filter((x) => x.startsWith(path.basename(f) + "-p")).map((x) => path.join(TMP, x))) { ps = extractImplant(ocr(png)); if (ps.length) break; }
+            }
+            if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = pu; }
+          }
         }
-        // 이미지 OCR(최대 8)
-        for (const a of assets.filter((x) => x.t === "img").slice(0, 8)) {
-          const ext = (a.u.match(/\.(png|jpe?g)/i) || [".png"])[0];
-          const f = path.join(TMP, "i" + Math.random().toString(36).slice(2) + ext);
-          if (!(await download(a.u, f))) continue;
-          const ps = extractImplant(ocr(f));
-          if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; }
-        }
-        if (found.length) break; // 한 페이지에서 찾으면 충분
+        if (found.length) break;
       }
-    } catch (e) { /* 무시 */ }
+    } catch (e) {}
     await page.close();
 
     if (found.length) {
       const lo = Math.min.apply(null, found), hi = Math.max.apply(null, found);
       c.price = median(found);
       if (lo !== hi) { c.priceMin = lo; c.priceMax = hi; } else { delete c.priceMin; delete c.priceMax; }
-      delete c.mats; // 홈페이지 게시가로 대체(심평원 재료별과 혼동 방지)
+      delete c.mats;
       const h = host(base);
       c.source = "site/" + h;
       c.priceSources = (c.priceSources ? c.priceSources + "|" : "") + "site/" + h;
       c.priceUrl = priceUrl || base;
       updated++;
-      console.log("  ✅ " + c.name + " ← " + c.price.toLocaleString("ko-KR") + "원 (" + found.length + "건) " + (priceUrl || base));
+      console.log("  ✅ " + c.name + " ← " + c.price.toLocaleString("ko-KR") + "원 (" + found.length + "건)");
     } else {
-      console.log("  – " + c.name + " (수가표 못 찾음) " + base);
+      console.log("  – " + c.name + " (수가표 못 찾음)");
     }
   }
   await browser.close();
