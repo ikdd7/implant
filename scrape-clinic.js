@@ -53,8 +53,10 @@ function download(url, dest) {
 }
 
 const HINT = /(비급여|수가|가격|요금|비용|임플란트|진료안내|치료비|price|cost|fee|implant|nonpay|non_pay|bigeup|sugar)/i;
-const COMMON = ["/price", "/bigeup", "/nonpay", "/non_pay", "/cost", "/fee", "/implant", "/sugar", "/price.html", "/sub/price", "/page/price"];
-const PRICELIKE = /(price|cost|fee|nonpay|bigeup|sugar|비급여|수가)/i;
+// STRONG: 비급여수가표일 가능성이 큰 링크(임플란트보다 우선 방문) — 진짜 가격 페이지를 메뉴 링크가 밀어내지 않도록
+const STRONG = /(비급여|수가|진료비|치료비|nonpay|non_pay|nonbenefit|non_benefit|bigeup|sugar)/i;
+const COMMON = ["/price", "/bigeup", "/nonpay", "/non_pay", "/cost", "/fee", "/implant", "/sugar", "/price.html", "/sub/price", "/page/price", "/sub/ft_nonbenefit.php", "/sub/nonbenefit.php", "/sub/bigeup.php"];
+const PRICELIKE = /(price|cost|fee|nonpay|nonbenefit|bigeup|sugar|비급여|수가|진료비|치료비)/i;
 const host = (u) => { try { return new URL(u).host; } catch (e) { return ""; } };
 const origin = (u) => { try { return new URL(u).origin; } catch (e) { return ""; } };
 
@@ -76,22 +78,27 @@ const origin = (u) => { try { return new URL(u).origin; } catch (e) { return "";
       await page.goto(base, { waitUntil: "domcontentloaded", timeout: 30000 });
       await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(2500); // 핫링크/봇 챌린지(JS) 처리 대기
-      let links = [];
+      let links = [], strongLinks = [];
       try {
-        links = await page.evaluate((H) => {
-          const h = location.host, out = [];
-          document.querySelectorAll("a[href]").forEach((a) => {
-            const t = (a.textContent || "") + " " + a.getAttribute("href");
-            if (new RegExp(H, "i").test(t)) { try { const u = new URL(a.href); if (u.host === h) out.push(u.href); } catch (e) {} }
+        const res = await page.evaluate((a) => {
+          const H = new RegExp(a.h, "i"), S = new RegExp(a.s, "i");
+          const h = location.host, out = [], strong = [];
+          document.querySelectorAll("a[href]").forEach((el) => {
+            const t = (el.textContent || "") + " " + el.getAttribute("href");
+            try { const u = new URL(el.href); if (u.host !== h) return; if (S.test(t)) strong.push(u.href); else if (H.test(t)) out.push(u.href); } catch (e) {}
           });
-          return out;
-        }, HINT.source);
+          return { out, strong };
+        }, { h: HINT.source, s: STRONG.source });
+        links = res.out; strongLinks = res.strong;
       } catch (e) {}
       const og = origin(base);
-      const visit = [base]
-        .concat(links.filter((u, i, a) => a.indexOf(u) === i).slice(0, 6))
+      const uniq = (arr) => arr.filter((u, i, a) => a.indexOf(u) === i);
+      // 비급여/수가 링크를 최우선으로, 그다음 임플란트 등 일반 링크, 마지막에 공통경로 추측
+      const visit = uniq([base]
+        .concat(uniq(strongLinks))
+        .concat(uniq(links).slice(0, 6))
         .concat(COMMON.map((p) => og + p))
-        .filter((u, i, a) => a.indexOf(u) === i).slice(0, 16);
+      ).slice(0, 20);
 
       let imgBudget = 12;
       for (const url of visit) {
