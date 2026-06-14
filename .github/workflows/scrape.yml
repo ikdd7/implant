@@ -1,8 +1,16 @@
-name: Scrape clinic sites (홈페이지 게시가)
+name: Scrape clinic sites (홈페이지 수가표)
 
-# Actions 탭 → "Run workflow" (clinic-sites.js에 대상 등록 후 실행)
+# clinics.js의 homepage가 있는 치과의 임플란트 수가표(HTML/PDF/이미지 OCR)를 읽어 가격 덮어쓰기.
+# 먼저 "Find homepages"로 homepage를 채운 뒤 실행.
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: "특정 치과명만(테스트용, 선택)"
+        default: ""
+      limit:
+        description: "처리 개수 제한(선택)"
+        default: ""
 
 permissions:
   contents: write
@@ -23,18 +31,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Install OCR tools (tesseract-kor, poppler)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-kor poppler-utils
       - name: Install Playwright + Chromium
         run: |
           npm i playwright@1.56.1 --no-save --no-package-lock
           npx playwright install --with-deps chromium
-      - name: Scrape clinic homepage prices
-        run: node scrape-clinic.js
-      - name: Geocode new clinics (좌표 없는 신규삽입분만)
-        continue-on-error: true
+      - name: Scrape homepage 수가표
         env:
-          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
-          ONLY_MISSING: "1"
-        run: node geocode.js
+          SCRAPE_ONLY: ${{ inputs.only }}
+          SCRAPE_LIMIT: ${{ inputs.limit }}
+        run: node scrape-clinic.js
       - name: Rebuild pages & sitemap, test
         run: |
           node build.js
@@ -48,7 +55,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "변경 없음"
           else
-            git commit -m "치과 홈페이지 게시가 수집 (Actions)"
+            git commit -m "홈페이지 수가표 임플란트가 수집 (Actions)"
             ok=0
             for i in 1 2 3 4 5; do
               git fetch origin claude/dental-clinic-map-incheon-i4t5sj || true
@@ -56,5 +63,5 @@ jobs:
               git rebase --abort || true
               sleep $((i * 5))
             done
-            [ "$ok" = 1 ] || { echo "push 실패(동시 변경)"; exit 1; }
+            [ "$ok" = 1 ] || { echo "push 실패"; exit 1; }
           fi

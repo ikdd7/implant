@@ -191,12 +191,13 @@
     var fav = '<button class="kk-fav' + (on ? " on" : "") + '" onclick="window.__toggleFav(\'' + key + '\',this)">' +
       (on ? "💗 찜됨" : "🤍 찜하기") + "</button>";
     var hpLink = d.homepage ? '<a class="kk-link" href="' + esc(d.homepage) + '" target="_blank" rel="noopener">🌐 홈페이지</a>' : "";
+    var priceLink = d.priceUrl ? '<a class="kk-link" href="' + esc(d.priceUrl) + '" target="_blank" rel="noopener">📋 수가표</a>' : "";
     return '<div class="kkcard">' +
       '<button class="kk-x" onclick="window.__closePop&&window.__closePop()" aria-label="닫기">×</button>' +
       '<div class="kk-name">' + esc(d.name || sub) + "</div>" +
       '<div class="kk-sub">' + esc(sub) + "</div>" +
       summary + body + contact + kwGrid + cmt +
-      '<div class="kk-actions">' + fav + hpLink + "</div>" +
+      '<div class="kk-actions">' + fav + hpLink + priceLink + "</div>" +
       '<div class="kk-tail"></div></div>';
   }
 
