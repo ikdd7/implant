@@ -13,4 +13,7 @@
  */
 module.exports = [
   // 예) { name:"연세제일치과의원", price:1200000, min:990000, max:1500000, url:"http://ysjeildent.co.kr/price" },
+  { name: "서울시카고치과병원", price: 1095000, min: 890000, max: 1500000,
+    mats: [["네오", 890000], ["포인트", 990000], ["오스템", 1200000], ["아스트라·SIC", 1500000]],
+    url: "https://sncchicago.com/" },
 ];
