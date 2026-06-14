@@ -55,10 +55,14 @@ function buildUrl(params) {
 async function fetchRows(extra) {
   const rows = [];
   let logged = false;
-  for (let page = 1; page <= 50; page++) {
+  for (let page = 1; page <= 100; page++) {
     const url = buildUrl(Object.assign({ pageNo: page, numOfRows: 100, _type: "json" }, extra));
-    let j;
-    try { j = await reqJSON(url); } catch (e) { console.warn("  요청 실패:", e.message); break; }
+    let j = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {                 // 504 등 일시 오류 재시도
+      try { j = await reqJSON(url); break; }
+      catch (e) { if (attempt === 4) console.warn("  요청 실패(p" + page + "):", e.message); else await sleep(1500 * attempt); }
+    }
+    if (!j) break;
     const body = j && j.response && j.response.body;
     let items = body && body.items;
     if (items && items.item) items = items.item;
@@ -72,7 +76,7 @@ async function fetchRows(extra) {
     arr.forEach((it) => rows.push(it));
     const total = (body && +body.totalCount) || 0;
     if (page * 100 >= total || arr.length < 100) break;
-    await sleep(120);
+    await sleep(400);
   }
   return rows;
 }
@@ -81,11 +85,13 @@ async function fetchRows(extra) {
   const { clinics, sample } = store.load();
   const { applyScrape } = require("./pricemerge.js");
 
-  const SIDO = process.env.HIRA_SIDO_CD, SGGU = process.env.HIRA_SGGU_CD;
+  // 기본: 인천 연수구 지역코드로 한 번에 페이징(이름 1곳씩 조회는 504 폭주라 비권장)
+  const SIDO = process.env.HIRA_SIDO_CD || "220000", SGGU = process.env.HIRA_SGGU_CD || "220007";
+  const BY_NAME = process.env.HIRA_BY_NAME === "1";
   let raw = [];
 
-  if (SGGU || SIDO) {
-    console.log("지역코드 조회: sido=" + (SIDO || "-") + " sggu=" + (SGGU || "-"));
+  if (!BY_NAME) {
+    console.log("지역코드 조회: sido=" + SIDO + " sggu=" + SGGU);
     raw = await fetchRows({ sidoCd: SIDO, sgguCd: SGGU });
   } else {
     console.log("치과 이름(yadmNm)으로 1곳씩 조회: " + clinics.length + "곳");
@@ -96,10 +102,13 @@ async function fetchRows(extra) {
     }
   }
 
-  // 임플란트 항목만, 연수구만
-  const impl = raw.filter((it) => isImplant(get(it, NAME_KEYS)) &&
-    /연수구/.test(String(get(it, ADDR_KEYS) || "")) !== false); // 주소 필드 없으면 통과
+  // 임플란트 항목만 (지역코드로 이미 연수구로 한정됨)
+  const impl = raw.filter((it) => isImplant(get(it, NAME_KEYS)));
   console.log("임플란트 비급여 레코드: " + impl.length + "건 / 전체 " + raw.length + "건");
+  if (raw.length && !impl.length) {
+    var names = {}; raw.forEach((it) => { var n = get(it, NAME_KEYS); if (n) names[n] = 1; });
+    console.log("  (참고) 수집된 항목명 예시:", Object.keys(names).slice(0, 30).join(" | "));
+  }
 
   const stat = { filled: 0, averaged: 0, dup: 0, inserted: 0, ambiguous: 0, junk: 0, invalid: 0 };
   impl.forEach((it) => {
