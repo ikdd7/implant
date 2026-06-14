@@ -23,6 +23,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Install Playwright + Chromium
+        run: |
+          npm i playwright@1.56.1 --no-save --no-package-lock
+          npx playwright install --with-deps chromium
       - name: Collect npay (비급여 포털)
         run: node npay.js
       - name: Geocode new clinics (좌표 없는 신규삽입분만)
@@ -40,6 +44,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add clinics.js region/ sitemap.xml
+          git checkout -- package.json package-lock.json 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "변경 없음"
           else

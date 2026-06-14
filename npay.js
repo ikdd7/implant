@@ -1,58 +1,27 @@
 /*
- * npay.js — 심평원 비급여 포털(hira.or.kr/npay) "비급여 진료비용" 검색 결과 수집
+ * npay.js — 심평원 비급여 포털 "비급여 진료비용" 결과 수집 (Playwright 인-페이지 fetch)
+ *   포털 SPA를 띄워 세션/CSRF를 자동 확립한 뒤, 페이지 컨텍스트에서 직접 API 호출.
  *   대상: 인천 연수구(sidoCd=22, sgguCd=220007) 치과임플란트(의원급 포함)
- *   방식: index.do로 세션/CSRF 확보 → selectNpayDamtPubList.do POST 페이징 → JSON 파싱
- *         → 의료기관명으로 clinics.js 매칭, 1치당 가격(레코드 금액들의 중앙값) 반영
- *   실행: node npay.js     (Node 표준 https만, 의존성 0)
- *
- * ⚠️ 1회차: 응답 첫 레코드 raw + 키 목록을 로그로 출력 → 금액/이름 필드명이 다르면 PICK_* 보정.
+ *   실행: node npay.js   (Playwright + Chromium)
  */
-const https = require("https");
+const { chromium } = require("playwright");
 const store = require("./store.js");
 const { applyScrape } = require("./pricemerge.js");
 
-const HOST = "www.hira.or.kr";
+const ENTRY = "https://www.hira.or.kr/npay/index.do";
 const LIST_PATH = "/npay/rb/selectNpayDamtPubList.do";
 const NPAY_CDS = "1180Z,1180Z010,UB0010011,UB0010021,UB0010012,UB0010022,UB0010041,UB0010051,UB0010001";
-const SIDO = process.env.NPAY_SIDO || "22";       // 인천
-const SGGU = process.env.NPAY_SGGU || "220007";   // 연수구
+const SIDO = process.env.NPAY_SIDO || "22";
+const SGGU = process.env.NPAY_SGGU || "220007";
 const SIDO_NM = process.env.NPAY_SIDO_NM || "인천";
 const SGGU_NM = process.env.NPAY_SGGU_NM || "인천연수구";
 
-// 응답 필드 후보(1회차 raw 확인 후 보정 가능)
-const NAME_KEYS = ["yadmNm", "yadmnm", "hospNm"];                 // 의료기관명
-const AMT_KEYS = ["minAmt", "maxAmt", "minPrc", "maxPrc", "curAmt", "amt", "prc", "npayAmt", "cmpAmt"]; // 금액(원)
-const ITEM_KEYS = ["npayKorNm", "npayNm", "itemNm"];             // 항목명
+const NAME_KEYS = ["yadmNm", "yadmnm", "hospNm"];
+const AMT_KEYS = ["minAmt", "maxAmt", "minPrc", "maxPrc", "curAmt", "amt", "prc", "npayAmt", "cmpAmt"];
 const PRICE_MIN = 300000, PRICE_MAX = 6000000;
-
-function req(method, path, headers, body) {
-  return new Promise((res, rej) => {
-    const r = https.request({ host: HOST, path: path, method: method, headers: headers }, (resp) => {
-      let d = "";
-      resp.on("data", (c) => (d += c));
-      resp.on("end", () => res({ status: resp.statusCode, headers: resp.headers, body: d }));
-    });
-    r.on("error", rej);
-    if (body) r.write(body);
-    r.end();
-  });
-}
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const enc = encodeURIComponent;
 
-// set-cookie 배열 → "k=v; k=v" + 특정 쿠키 추출
-function parseCookies(setCookie) {
-  const jar = {};
-  (setCookie || []).forEach((line) => {
-    const kv = line.split(";")[0];
-    const i = kv.indexOf("=");
-    if (i > 0) jar[kv.slice(0, i).trim()] = kv.slice(i + 1).trim();
-  });
-  return jar;
-}
-
 function buildBody(csrf, page) {
-  // 캡처한 요청 순서/키 그대로 재현 (Cleopatra dmParam 포맷)
   const pairs = [
     ["_csrf", csrf],
     ["@d1#sidoCd", SIDO], ["@d1#sgguCd", SGGU], ["@d1#emdongCd", ""],
@@ -69,14 +38,11 @@ function buildBody(csrf, page) {
 }
 
 const get = (o, keys) => { for (const k of keys) if (o && o[k] != null && o[k] !== "") return o[k]; return null; };
-// 객체 안에서 yadmNm을 가진 레코드 배열을 찾아 반환
 function findRows(j) {
   let best = [];
   (function walk(v) {
     if (Array.isArray(v)) {
-      if (v.length && typeof v[0] === "object" && v[0] && NAME_KEYS.some((k) => k in v[0])) {
-        if (v.length > best.length) best = v;
-      }
+      if (v.length && typeof v[0] === "object" && v[0] && NAME_KEYS.some((k) => k in v[0])) { if (v.length > best.length) best = v; }
       v.forEach(walk);
     } else if (v && typeof v === "object") { Object.keys(v).forEach((k) => walk(v[k])); }
   })(j);
@@ -84,78 +50,62 @@ function findRows(j) {
 }
 
 (async () => {
-  // 1) 세션/CSRF 확보
-  const home = await req("GET", "/npay/index.do", {
-    "User-Agent": "Mozilla/5.0", "Accept": "text/html",
+  const browser = await chromium.launch();
+  const ctx = await browser.newContext({ locale: "ko-KR", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36" });
+  const page = await ctx.newPage();
+  console.log("▶ goto", ENTRY);
+  await page.goto(ENTRY, { waitUntil: "networkidle", timeout: 60000 }).catch((e) => console.warn("goto warn:", e.message));
+  await page.waitForTimeout(5000); // SPA 초기화 → CSRF/세션 확립
+
+  // CSRF 토큰: 쿠키(document.cookie) 또는 framework 전역에서 탐색
+  const csrf = await page.evaluate(() => {
+    const m = document.cookie.match(/CSRF_TOKEN=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    try { for (const k in window) { const v = window[k]; if (typeof v === "string" && /^[A-Za-z0-9+/=]{20,}$/.test(v) && k.toLowerCase().indexOf("csrf") >= 0) return v; } } catch (e) {}
+    return "";
   });
-  const jar = parseCookies(home.headers["set-cookie"]);
-  console.log("set-cookie raw:", JSON.stringify(home.headers["set-cookie"] || []));
-  console.log("쿠키:", Object.keys(jar).join(", ") || "(없음)");
-  // CSRF 토큰: 쿠키 우선, 없으면 HTML(meta/JS)에서 추출
-  let csrf = jar.CSRF_TOKEN ? decodeURIComponent(jar.CSRF_TOKEN) : "";
-  if (!csrf) {
-    const html = home.body || "";
-    const m = html.match(/name=["']_csrf["']\s+content=["']([^"']+)["']/i)
-      || html.match(/CSRF_TOKEN["']?\s*[:=]\s*["']([^"']+)["']/i)
-      || html.match(/_csrf["']?\s*[:=]\s*["']([^"']+)["']/i);
-    if (m) { csrf = m[1]; console.log("HTML에서 CSRF 추출:", csrf.slice(0, 12) + "…"); }
-    // csrf 관련 흔적 덤프
-    const idx = html.search(/csrf/i);
-    if (idx >= 0) console.log("HTML csrf 주변:", html.slice(Math.max(0, idx - 80), idx + 120).replace(/\s+/g, " "));
-  }
-  if (!csrf) console.warn("⚠️ CSRF_TOKEN 못 구함 — POST 거부 가능. 아래 응답으로 원인 확인.");
-  const cookieHeader = Object.keys(jar).map((k) => k + "=" + jar[k]).join("; ");
+  console.log("CSRF:", csrf ? csrf.slice(0, 12) + "…" : "(못 구함)");
+  console.log("cookie names:", await page.evaluate(() => document.cookie.split(";").map((c) => c.trim().split("=")[0]).join(",")));
 
-  const headers = {
-    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "X-Requested-With": "XMLHttpRequest",
-    "Origin": "https://www.hira.or.kr",
-    "Referer": "https://www.hira.or.kr/npay/index.do",
-    "User-Agent": "Mozilla/5.0",
-    "Cookie": cookieHeader,
-  };
-
-  // 2) 페이징 수집
+  // 인-페이지 fetch로 페이징 수집
   let raw = [], logged = false;
-  for (let page = 1; page <= 30; page++) {
-    const body = buildBody(csrf, page);
-    const h = Object.assign({}, headers, { "Content-Length": Buffer.byteLength(body) });
-    let resp;
-    try { resp = await req("POST", LIST_PATH, h, body); } catch (e) { console.warn("요청 실패 p" + page, e.message); break; }
-    let j; try { j = JSON.parse(resp.body); } catch (e) { console.warn("JSON 파싱 실패 p" + page + " (status " + resp.status + "):", resp.body.slice(0, 200)); break; }
+  for (let pg = 1; pg <= 30; pg++) {
+    const body = buildBody(csrf, pg);
+    const res = await page.evaluate(async (args) => {
+      const r = await fetch(args.path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" }, body: args.body, credentials: "include" });
+      return { status: r.status, text: await r.text() };
+    }, { path: LIST_PATH, body: body });
+    let j; try { j = JSON.parse(res.text); } catch (e) { console.warn("JSON 실패 p" + pg + " status " + res.status + ":", res.text.slice(0, 200)); break; }
     const rows = findRows(j);
     if (!logged) {
       console.log("응답 최상위 키:", Object.keys(j).join(", "));
-      if (j.ERRMSGINFO || (Object.keys(j).length === 1 && /ERR/i.test(Object.keys(j)[0]))) console.log("에러 응답 원문:", JSON.stringify(j).slice(0, 400));
+      if (j.ERRMSGINFO) console.log("에러 응답:", JSON.stringify(j).slice(0, 300));
       if (rows[0]) { console.log("[raw 첫 레코드]", JSON.stringify(rows[0])); console.log("레코드 키:", Object.keys(rows[0]).join(", ")); }
       logged = true;
     }
-    if (!rows.length) { console.log("p" + page + ": 행 없음 → 종료"); break; }
+    if (!rows.length) { console.log("p" + pg + ": 행 없음 → 종료"); break; }
     raw = raw.concat(rows);
     if (rows.length < 100) break;
-    await sleep(300);
+    await page.waitForTimeout(300);
   }
+  await browser.close();
   console.log("총 수집 레코드:", raw.length);
 
-  // 3) 의료기관별 금액 모으기 → 중앙값
   function median(a) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); }
   const byName = {};
   raw.forEach((it) => {
     const nm = get(it, NAME_KEYS); if (!nm) return;
     const amts = [];
     AMT_KEYS.forEach((k) => { const n = parseInt(String(it[k] == null ? "" : it[k]).replace(/[^0-9]/g, ""), 10); if (n >= PRICE_MIN && n <= PRICE_MAX) amts.push(n); });
-    if (!amts.length) return;
-    (byName[nm] = byName[nm] || []).push.apply(byName[nm], amts);
+    if (amts.length) (byName[nm] = byName[nm] || []).push.apply(byName[nm], amts);
   });
   const names = Object.keys(byName);
   console.log("가격 있는 의료기관:", names.length);
 
-  // 4) clinics.js 반영
   const { clinics, sample } = store.load();
   const stat = { filled: 0, averaged: 0, dup: 0, inserted: 0, ambiguous: 0, junk: 0, invalid: 0 };
   names.forEach((nm) => {
-    const price = median(byName[nm]);
-    const r = applyScrape(clinics, { name: nm, region: "인천", district: "연수구", price: price, source: "npay/" + nm });
+    const r = applyScrape(clinics, { name: nm, region: "인천", district: "연수구", price: median(byName[nm]), source: "npay/" + nm });
     stat[r.status] = (stat[r.status] || 0) + 1;
   });
   store.write(require("./dedupe.js").dedupeClinics(clinics), sample);
