@@ -50,8 +50,11 @@ function download(url, dest) {
   });
 }
 
-const HINT = /(비급여|수가|가격|요금|비용|임플란트|진료안내|치료비)/;
+const HINT = /(비급여|수가|가격|요금|비용|임플란트|진료안내|치료비|price|cost|fee|implant|nonpay|non_pay|bigeup|sugar)/i;
+const COMMON = ["/price", "/bigeup", "/nonpay", "/non_pay", "/cost", "/fee", "/implant", "/sugar", "/price.html", "/sub/price", "/page/price"];
+const PRICELIKE = /(price|cost|fee|nonpay|bigeup|sugar|비급여|수가)/i;
 const host = (u) => { try { return new URL(u).host; } catch (e) { return ""; } };
+const origin = (u) => { try { return new URL(u).origin; } catch (e) { return ""; } };
 
 (async () => {
   const { clinics, sample } = store.load();
@@ -69,26 +72,32 @@ const host = (u) => { try { return new URL(u).host; } catch (e) { return ""; } }
     const page = await ctx.newPage(); page.setDefaultTimeout(25000);
     try {
       await page.goto(base, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await page.waitForTimeout(2000); // 핫링크/봇 챌린지(JS) 처리 대기
+      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(2500); // 핫링크/봇 챌린지(JS) 처리 대기
       let links = [];
       try {
         links = await page.evaluate((H) => {
           const h = location.host, out = [];
           document.querySelectorAll("a[href]").forEach((a) => {
             const t = (a.textContent || "") + " " + a.getAttribute("href");
-            if (new RegExp(H).test(t)) { try { const u = new URL(a.href); if (u.host === h) out.push(u.href); } catch (e) {} }
+            if (new RegExp(H, "i").test(t)) { try { const u = new URL(a.href); if (u.host === h) out.push(u.href); } catch (e) {} }
           });
           return out;
         }, HINT.source);
       } catch (e) {}
-      const visit = [base].concat(links.filter((u, i, a) => a.indexOf(u) === i).slice(0, 5));
+      const og = origin(base);
+      const visit = [base]
+        .concat(links.filter((u, i, a) => a.indexOf(u) === i).slice(0, 6))
+        .concat(COMMON.map((p) => og + p))
+        .filter((u, i, a) => a.indexOf(u) === i).slice(0, 16);
 
       let imgBudget = 12;
       for (const url of visit) {
-        if (url !== base) { try { await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 }); await page.waitForTimeout(1200); } catch (e) { continue; } }
+        if (url !== base) { try { const rr = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 }); if (rr && rr.status() >= 400) continue; await page.waitForTimeout(1200); } catch (e) { continue; } }
+        let pageBigeup = PRICELIKE.test(url);
         for (const fr of page.frames()) {
           // 1) 텍스트
-          try { const tx = await fr.evaluate(() => document.body && document.body.innerText); const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
+          try { const tx = await fr.evaluate(() => document.body && document.body.innerText); if (/비급여|수가/.test(tx || "")) pageBigeup = true; const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
           // 2) 이미지 요소 스크린샷 → OCR (핫링크차단 우회)
           if (imgBudget > 0) {
             let imgs = []; try { imgs = await fr.$$("img"); } catch (e) {}
@@ -115,6 +124,12 @@ const host = (u) => { try { return new URL(u).host; } catch (e) { return ""; } }
             }
             if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = pu; }
           }
+        }
+        // 4) 비급여/가격 페이지인데 아직 못 찾았으면 전체 화면 OCR(이미지형 수가표 통째로)
+        if (!found.length && pageBigeup) {
+          const f = tmpFile(".png");
+          try { await page.screenshot({ path: f, fullPage: true }); } catch (e) {}
+          if (isImage(f)) { const ps = extractImplant(ocr(f)); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } }
         }
         if (found.length) break;
       }
