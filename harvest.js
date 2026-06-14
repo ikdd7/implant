@@ -44,6 +44,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const byId = new Set();
   const added = [];
   let calls = 0;
+  let loggedErr = false;
 
   for (const dong of DONGS) {
     for (const kw of KEYWORDS) {
@@ -55,6 +56,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             "&query=" + encodeURIComponent(q));
           calls++;
         } catch (e) { break; }
+        if (!j || !j.documents) {
+          if (!loggedErr) { console.warn("⚠️ 카카오 비정상 응답:", JSON.stringify(j).slice(0, 300)); loggedErr = true; }
+        }
         const docs = (j && j.documents) || [];
         for (const d of docs) {
           if (!isDental(d)) continue;
