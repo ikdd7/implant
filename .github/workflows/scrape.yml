@@ -11,6 +11,9 @@ on:
       limit:
         description: "처리 개수 제한(선택)"
         default: ""
+      debug:
+        description: "OCR 디버그 로그(1이면 켜기)"
+        default: ""
 
 permissions:
   contents: write
@@ -41,6 +44,7 @@ jobs:
         env:
           SCRAPE_ONLY: ${{ inputs.only }}
           SCRAPE_LIMIT: ${{ inputs.limit }}
+          SCRAPE_DEBUG: ${{ inputs.debug }}
         run: node scrape-clinic.js
       - name: Rebuild pages & sitemap, test
         run: |

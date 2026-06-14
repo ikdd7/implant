@@ -14,16 +14,18 @@ const https = require("https"), http = require("http");
 const store = require("./store.js");
 
 const PRICE_MIN = 300000, PRICE_MAX = 6000000;
+const DEBUG = process.env.SCRAPE_DEBUG === "1";
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "hp-"));
 let tmpN = 0;
 const tmpFile = (ext) => path.join(TMP, "f" + (tmpN++) + ext);
 
-function wonOf(numStr, unit) { let n = parseInt(String(numStr).replace(/,/g, ""), 10); if (/만/.test(unit)) n *= 10000; return n; }
+function wonOf(numStr, unit) { let n = parseInt(String(numStr).replace(/[^0-9]/g, ""), 10); if (/만/.test(unit)) n *= 10000; return n; }
 function extractImplant(text) {
   if (!text) return [];
   const t = String(text).replace(/[\n\r\t]+/g, " ").replace(/ +/g, " ");
   const out = [];
-  const re = /임\s?플\s?란\s?트[^.]{0,50}?([0-9][0-9,]{1,})\s*(만원|만|원)/g;
+  // 임플란트 뒤 60자 내 (점·콤마·공백 섞인) 숫자 + 만원/만/원
+  const re = /임\s?플\s?란\s?트[^.\n]{0,60}?([0-9][0-9.,\s]{1,12}?)\s*(만\s?원|만|원)/g;
   let m; while ((m = re.exec(t))) { const n = wonOf(m[1], m[2]); if (n >= PRICE_MIN && n <= PRICE_MAX) out.push(n); }
   return out;
 }
@@ -97,7 +99,7 @@ const origin = (u) => { try { return new URL(u).origin; } catch (e) { return "";
         let pageBigeup = PRICELIKE.test(url);
         for (const fr of page.frames()) {
           // 1) 텍스트
-          try { const tx = await fr.evaluate(() => document.body && document.body.innerText); if (/비급여|수가/.test(tx || "")) pageBigeup = true; const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
+          try { const tx = await fr.evaluate(() => document.body && document.body.innerText); if (/비급여|수가/.test(tx || "")) pageBigeup = true; if (DEBUG && /임\s?플\s?란\s?트/.test(tx || "")) console.log("  [텍스트]" + url + " :: " + (tx.replace(/\s+/g, " ").match(/.{0,8}임\s?플\s?란\s?트.{0,45}/g) || []).slice(0, 4).join(" ｜ ")); const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
           // 2) 이미지 요소 스크린샷 → OCR (핫링크차단 우회)
           if (imgBudget > 0) {
             let imgs = []; try { imgs = await fr.$$("img"); } catch (e) {}
@@ -108,7 +110,9 @@ const origin = (u) => { try { return new URL(u).origin; } catch (e) { return "";
               imgBudget--;
               const f = tmpFile(".png");
               try { await h.screenshot({ path: f }); } catch (e) { continue; }
-              const ps = extractImplant(ocr(f));
+              const o = ocr(f);
+              if (DEBUG && /임\s?플\s?란\s?트|[0-9]{6}|만\s?원/.test(o)) console.log("  [이미지OCR]" + url + " :: " + o.replace(/\s+/g, " ").slice(0, 200));
+              const ps = extractImplant(o);
               if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; }
             }
           }
@@ -129,7 +133,7 @@ const origin = (u) => { try { return new URL(u).origin; } catch (e) { return "";
         if (!found.length && pageBigeup) {
           const f = tmpFile(".png");
           try { await page.screenshot({ path: f, fullPage: true }); } catch (e) {}
-          if (isImage(f)) { const ps = extractImplant(ocr(f)); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } }
+          if (isImage(f)) { const o = ocr(f); if (DEBUG) console.log("  [전체OCR]" + url + " :: " + (o.replace(/\s+/g, " ").match(/.{0,8}임\s?플\s?란\s?트.{0,45}|.{0,20}만\s?원.{0,5}/g) || []).slice(0, 6).join(" ｜ ") || "(임플란트/원 토큰 없음, 길이 " + o.length + ")"); const ps = extractImplant(o); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } }
         }
         if (found.length) break;
       }
