@@ -1,54 +1,49 @@
 /*
- * homepages.js — 각 치과의 홈페이지 URL 자동 수집 (카카오 장소 상세)
- *   카카오 키워드검색으로 place id 확보 → place.map.kakao.com 상세에서 homepage 추출 → clinics.js에 homepage 필드 저장.
- *   실행:  KAKAO_REST_KEY=키 node homepages.js
- *   결과:  clinic.homepage = "https://..."(있으면) / null(없음). scrape-clinic.js(C2)가 이걸로 수가표를 긁음.
+ * homepages.js — 각 치과의 홈페이지 URL 수집 (네이버 지역검색 API)
+ *   실행:  NAVER_CLIENT_ID=.. NAVER_CLIENT_SECRET=.. node homepages.js
+ *   네이버 지역검색 결과의 link(홈페이지)를 이름+주소(연수구)로 매칭해 clinic.homepage 저장.
+ *   ONLY_MISSING=0 이면 전체 재조회(기본은 homepage 미확인분만).
  */
 const https = require("https");
 const store = require("./store.js");
+const { nameOverlap } = require("./pricemerge.js");
 
-const KEY = process.env.KAKAO_REST_KEY;
-if (!KEY) { console.error("❌ KAKAO_REST_KEY 필요"); process.exit(1); }
-const ONLY_MISSING = process.env.ONLY_MISSING !== "0"; // 기본: homepage 미확인분만
+const CID = process.env.NAVER_CLIENT_ID, CSEC = process.env.NAVER_CLIENT_SECRET;
+if (!CID || !CSEC) { console.error("❌ NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 필요"); process.exit(1); }
+const ONLY_MISSING = process.env.ONLY_MISSING !== "0";
 
-function getJSON(host, path, headers) {
+function naver(query) {
   return new Promise((res) => {
-    https.get({ host, path, headers }, (r) => { let d = ""; r.on("data", (c) => (d += c)); r.on("end", () => res(d)); }).on("error", () => res(""));
+    https.get({
+      host: "openapi.naver.com", path: "/v1/search/local.json?display=5&query=" + encodeURIComponent(query),
+      headers: { "X-Naver-Client-Id": CID, "X-Naver-Client-Secret": CSEC, "User-Agent": "Mozilla/5.0" },
+    }, (r) => { let d = ""; r.on("data", (c) => (d += c)); r.on("end", () => { try { res(JSON.parse(d)); } catch (e) { res({ _err: d.slice(0, 120) }); } }); }).on("error", () => res({}));
   });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const enc = encodeURIComponent;
-
-// 카카오 키워드검색 → place id
-async function placeId(name) {
-  const d = await getJSON("dapi.kakao.com", "/v2/local/search/keyword.json?size=1&query=" + enc(name + " 연수구 치과"), { Authorization: "KakaoAK " + KEY });
-  try { const j = JSON.parse(d); return (j.documents && j.documents[0] && j.documents[0].id) || null; } catch (e) { return null; }
-}
-// 카카오 장소 상세 → homepage
-async function homepageOf(id) {
-  const d = await getJSON("place.map.kakao.com", "/main/v/" + id, { "User-Agent": "Mozilla/5.0", Referer: "https://place.map.kakao.com/" });
-  let m = d.match(/"homepage"\s*:\s*"([^"]*)"/);
-  let hp = m ? m[1] : "";
-  hp = hp.replace(/\\\//g, "/").trim();
-  return /^https?:\/\//.test(hp) ? hp : "";
-}
+const stripTags = (s) => String(s || "").replace(/<[^>]+>/g, "");
 
 (async () => {
   const { clinics, sample } = store.load();
-  let checked = 0, found = 0; const samples = [];
+  let checked = 0, found = 0, errLogged = false; const samples = [];
   for (const c of clinics) {
     if (ONLY_MISSING && c.homepage !== undefined) continue;
-    let id = null;
-    const m = String(c.source || "").match(/kakao\/(\d+)/) || String(c.priceSources || "").match(/kakao\/(\d+)/);
-    if (m) id = m[1]; else id = await placeId(c.name);
-    if (!id) { c.homepage = null; continue; }
-    const hp = await homepageOf(id);
-    c.homepage = hp || null;
     checked++;
-    if (hp) { found++; if (samples.length < 10) samples.push(c.name + " → " + hp); }
-    await sleep(200);
+    const j = await naver("연수구 " + c.name);
+    if (j && j._err && !errLogged) { console.warn("네이버 응답 이상:", j._err); errLogged = true; }
+    const items = (j && j.items) || [];
+    let pick = null;
+    for (const it of items) {
+      const addr = it.roadAddress || it.address || "";
+      if (!/연수구/.test(addr)) continue;
+      if (nameOverlap(stripTags(it.title), c.name)) { pick = it; break; }
+    }
+    const hp = pick && pick.link ? pick.link : "";
+    c.homepage = hp || null;
+    if (hp) { found++; if (samples.length < 12) samples.push(c.name + " → " + hp); }
+    await sleep(120);
   }
   store.write(clinics, sample);
-  console.log("✅ 홈페이지 수집: " + checked + "곳 확인, " + found + "곳 발견");
+  console.log("✅ 홈페이지 수집(네이버): " + checked + "곳 조회, " + found + "곳 발견");
   samples.forEach((s) => console.log("  " + s));
 })();
