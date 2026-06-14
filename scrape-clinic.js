@@ -100,6 +100,8 @@ const origin = (u) => { try { return new URL(u).origin; } catch (e) { return "";
         for (const fr of page.frames()) {
           // 1) 텍스트
           try { const tx = await fr.evaluate(() => document.body && document.body.innerText); if (/비급여|수가/.test(tx || "")) pageBigeup = true; if (DEBUG && /임\s?플\s?란\s?트/.test(tx || "")) console.log("  [텍스트]" + url + " :: " + (tx.replace(/\s+/g, " ").match(/.{0,8}임\s?플\s?란\s?트.{0,45}/g) || []).slice(0, 4).join(" ｜ ")); const ps = extractImplant(tx); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
+          // 1b) 원본 HTML(숨김 팝업·푸터 비급여고지표 등 innerText에 안 잡히는 것까지) — view-source에 있는 수가표 회수
+          try { const html = await fr.content(); const raw = String(html).replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&"); if (/비급여|수가/.test(raw)) pageBigeup = true; if (DEBUG && /임\s?플\s?란\s?트/.test(raw)) console.log("  [HTML]" + url + " :: " + (raw.replace(/\s+/g, " ").match(/.{0,8}임\s?플\s?란\s?트.{0,55}/g) || []).slice(0, 6).join(" ｜ ")); const ps = extractImplant(raw); if (ps.length) { found.push.apply(found, ps); if (!priceUrl) priceUrl = url; } } catch (e) {}
           // 2) 이미지 요소 스크린샷 → OCR (핫링크차단 우회)
           if (imgBudget > 0) {
             let imgs = []; try { imgs = await fr.$$("img"); } catch (e) {}
