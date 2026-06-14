@@ -89,11 +89,22 @@ function findRows(j) {
     "User-Agent": "Mozilla/5.0", "Accept": "text/html",
   });
   const jar = parseCookies(home.headers["set-cookie"]);
+  console.log("set-cookie raw:", JSON.stringify(home.headers["set-cookie"] || []));
   console.log("쿠키:", Object.keys(jar).join(", ") || "(없음)");
+  // CSRF 토큰: 쿠키 우선, 없으면 HTML(meta/JS)에서 추출
+  let csrf = jar.CSRF_TOKEN ? decodeURIComponent(jar.CSRF_TOKEN) : "";
+  if (!csrf) {
+    const html = home.body || "";
+    const m = html.match(/name=["']_csrf["']\s+content=["']([^"']+)["']/i)
+      || html.match(/CSRF_TOKEN["']?\s*[:=]\s*["']([^"']+)["']/i)
+      || html.match(/_csrf["']?\s*[:=]\s*["']([^"']+)["']/i);
+    if (m) { csrf = m[1]; console.log("HTML에서 CSRF 추출:", csrf.slice(0, 12) + "…"); }
+    // csrf 관련 흔적 덤프
+    const idx = html.search(/csrf/i);
+    if (idx >= 0) console.log("HTML csrf 주변:", html.slice(Math.max(0, idx - 80), idx + 120).replace(/\s+/g, " "));
+  }
+  if (!csrf) console.warn("⚠️ CSRF_TOKEN 못 구함 — POST 거부 가능. 아래 응답으로 원인 확인.");
   const cookieHeader = Object.keys(jar).map((k) => k + "=" + jar[k]).join("; ");
-  const csrfRaw = jar.CSRF_TOKEN || "";
-  const csrf = csrfRaw ? decodeURIComponent(csrfRaw) : "";
-  if (!csrf) console.warn("⚠️ CSRF_TOKEN 쿠키를 못 받음 — POST가 거부될 수 있음");
 
   const headers = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -115,6 +126,7 @@ function findRows(j) {
     const rows = findRows(j);
     if (!logged) {
       console.log("응답 최상위 키:", Object.keys(j).join(", "));
+      if (j.ERRMSGINFO || (Object.keys(j).length === 1 && /ERR/i.test(Object.keys(j)[0]))) console.log("에러 응답 원문:", JSON.stringify(j).slice(0, 400));
       if (rows[0]) { console.log("[raw 첫 레코드]", JSON.stringify(rows[0])); console.log("레코드 키:", Object.keys(rows[0]).join(", ")); }
       logged = true;
     }
