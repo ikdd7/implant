@@ -1,6 +1,6 @@
-/* 인천 연수구 치과(임플란트) 리스트 — 수집+중복병합(2026-06-14, 109곳) */
+/* 인천 연수구 치과(임플란트) 리스트 — 수집+중복병합(2026-06-14, 111곳) */
 window.CLINICS = [
-  {"name":"22세기서울치과병원","region":"인천","district":"연수구","price":null,"lat":37.395741,"lng":126.650914,"verified":false,"source":"kakao/1744818896","addr":"인천 연수구 컨벤시아대로 69","phone":"032-858-2080"},
+  {"name":"22세기서울치과병원","region":"인천","district":"연수구","price":1500000,"lat":37.395741,"lng":126.650914,"verified":false,"source":"hira/22세기서울치과병원","addr":"인천 연수구 컨벤시아대로 69","phone":"032-858-2080","nobs":1,"priceSources":"hira/22세기서울치과병원"},
   {"name":"송도위드치과의원","region":"인천","district":"연수구","price":null,"lat":37.398433,"lng":126.648473,"verified":false,"source":"kakao/1434511200","addr":"인천 연수구 신송로 166","phone":"032-834-7522"},
   {"name":"연세제일치과의원","region":"인천","district":"연수구","price":null,"lat":37.414051,"lng":126.676708,"verified":false,"source":"kakao/1459198517","addr":"인천 연수구 먼우금로 190","phone":"032-815-2275"},
   {"name":"모든치과의원","region":"인천","district":"연수구","price":null,"lat":37.413122,"lng":126.680465,"verified":false,"source":"kakao/16154143","addr":"인천 연수구 용담로 147","phone":"032-816-6373"},
@@ -43,7 +43,7 @@ window.CLINICS = [
   {"name":"연수바른치과의원","region":"인천","district":"연수구","price":null,"lat":37.406972,"lng":126.672819,"verified":false,"source":"kakao/1780255579","addr":"인천 연수구 앵고개로 266","phone":"032-255-2828"},
   {"name":"신세계정치과의원","region":"인천","district":"연수구","price":null,"lat":37.393365,"lng":126.643357,"verified":false,"source":"kakao/27546146","addr":"인천 연수구 센트럴로 160","phone":"032-851-2082"},
   {"name":"리봄치과의원","region":"인천","district":"연수구","price":null,"lat":37.383166,"lng":126.640714,"verified":false,"source":"kakao/254858696","addr":"인천 연수구 하모니로178번길 22","phone":"032-235-2879"},
-  {"name":"서울시카고치과병원","region":"인천","district":"연수구","price":null,"lat":37.394946,"lng":126.650143,"verified":false,"source":"kakao/22548214","addr":"인천 연수구 컨벤시아대로 81","phone":"1899-0022"},
+  {"name":"서울시카고치과병원","region":"인천","district":"연수구","price":1200000,"lat":37.394946,"lng":126.650143,"verified":false,"source":"hira/서울시카고치과병원","addr":"인천 연수구 컨벤시아대로 81","phone":"1899-0022","nobs":1,"priceSources":"hira/서울시카고치과병원"},
   {"name":"바르게고치과의원","region":"인천","district":"연수구","price":null,"lat":37.38234,"lng":126.641368,"verified":false,"source":"kakao/39365521","addr":"인천 연수구 하모니로178번길 6","phone":"032-833-2175"},
   {"name":"송도굿모닝치과의원","region":"인천","district":"연수구","price":null,"lat":37.413243,"lng":126.617123,"verified":false,"source":"kakao/12097970","addr":"인천 연수구 랜드마크로 113","phone":"032-461-2080"},
   {"name":"모아치과의원","region":"인천","district":"연수구","price":null,"lat":37.407816,"lng":126.672031,"verified":false,"source":"kakao/22374025","addr":"인천 연수구 앵고개로 256","phone":"032-821-2828"},
@@ -108,7 +108,9 @@ window.CLINICS = [
   {"name":"달콤어린이치과의원","region":"인천","district":"연수구","price":null,"lat":37.389034,"lng":126.634053,"verified":false,"source":"kakao/29381122","addr":"인천 연수구 컨벤시아대로230번길 54","phone":"032-833-8279"},
   {"name":"연세커낼치과의원","region":"인천","district":"연수구","price":null,"lat":37.397981,"lng":126.635935,"verified":false,"source":"kakao/491799259","addr":"인천 연수구 아트센터대로 149","phone":"032-833-2804"},
   {"name":"센트럴디앤디치과의원","region":"인천","district":"연수구","price":null,"lat":37.397581,"lng":126.636529,"verified":false,"source":"kakao/14568753","addr":"인천 연수구 센트럴로 232","phone":"032-858-2275"},
-  {"name":"송도스카이치과의원","region":"인천","district":"연수구","price":null,"lat":37.40108,"lng":126.628968,"verified":false,"source":"kakao/538373063","addr":"인천 연수구 인천타워대로 365","phone":"032-832-2524"}
+  {"name":"송도스카이치과의원","region":"인천","district":"연수구","price":null,"lat":37.40108,"lng":126.628968,"verified":false,"source":"kakao/538373063","addr":"인천 연수구 인천타워대로 365","phone":"032-832-2524"},
+  {"name":"인천적십자병원","region":"인천","district":"연수구","price":900000,"verified":false,"source":"hira/인천적십자병원","inserted":true,"nobs":1,"priceSources":"hira/인천적십자병원","lat":37.418275,"lng":126.689602},
+  {"name":"청담해리슨송도병원","region":"인천","district":"연수구","price":2500000,"verified":false,"source":"hira/청담해리슨송도병원","inserted":true,"nobs":1,"priceSources":"hira/청담해리슨송도병원","lat":37.397039,"lng":126.648706}
 ];
 
 /* 실데이터 0건일 때 레이아웃 확인용 예시(클라이언트 폴백). 실제 가격 아님. */
