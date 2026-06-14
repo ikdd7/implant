@@ -148,10 +148,14 @@
     var chipHtml = chips.length ? '<div class="kk-chips">' + chips.map(function (c) { return "<span>" + esc(c) + "</span>"; }).join("") + "</div>" : "";
     var body;
     if (hasPrice(d)) {
+      var hasRange = d.priceMin && d.priceMax && d.priceMin !== d.priceMax;
+      var pv = hasRange ? (manwon(d.priceMin) + "~" + manwon(d.priceMax) + "원") : won(d.price);
+      var matsHtml = (d.mats && d.mats.length) ? '<div class="kk-mats"><div class="kk-matst">재료별 (1치당)</div>' +
+        d.mats.map(function (m) { return '<span><i>' + esc(m[0]) + "</i> " + manwon(m[1]) + "</span>"; }).join("") + "</div>" : "";
       body = '<div class="kk-pricerow">' +
-          '<div class="kk-pb meal"><div class="kk-pblab">임플란트 1치당</div><div class="kk-pbval">' + won(d.price) + "</div></div>" +
-        "</div>" +
-        '<div class="kk-total">' + COUNT + "개 예상 ≈ <b>" + manwon(totalCost(d)) + "원</b> <small>(부가수술·뼈이식 별도일 수 있음)</small></div>" +
+          '<div class="kk-pb meal"><div class="kk-pblab">임플란트 1치당</div><div class="kk-pbval">' + pv + "</div></div>" +
+        "</div>" + matsHtml +
+        '<div class="kk-total">' + COUNT + "개 예상 ≈ <b>" + manwon(totalCost(d)) + "원</b> <small>(중앙값 기준 · 부가수술·뼈이식 별도)</small></div>" +
         '<div class="kk-caveat">' + esc(priceCaveat(d)) + "</div>" + chipHtml;
     } else {
       body = '<div class="kk-soon">💬 임플란트 비급여가 수집 중</div><div class="kk-soonsub">게시가/심평원 정보가 확인되면 표시돼요 🙏</div>' + chipHtml;

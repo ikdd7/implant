@@ -17,6 +17,7 @@ const SIDO_NM = process.env.NPAY_SIDO_NM || "인천";
 const SGGU_NM = process.env.NPAY_SGGU_NM || "인천연수구";
 
 const NAME_KEYS = ["yadmNm", "yadmnm", "hospNm"];
+const ITEM_KEYS = ["npayKorNm", "npayNm", "itemNm", "npayCdNm"];
 const AMT_KEYS = ["minAmt", "maxAmt", "minPrc", "maxPrc", "curAmt", "amt", "prc", "npayAmt", "cmpAmt"];
 const PRICE_MIN = 300000, PRICE_MAX = 6000000;
 const enc = encodeURIComponent;
@@ -92,12 +93,28 @@ function findRows(j) {
   console.log("총 수집 레코드:", raw.length);
 
   function median(a) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); }
+  function numIn(it, keys) { for (const k of keys) { if (it[k] != null && it[k] !== "") { const n = parseInt(String(it[k]).replace(/[^0-9]/g, ""), 10); if (!isNaN(n)) return n; } } return NaN; }
+  // 항목명에서 재료 추출: ".../치과임플란트(1치당)/지르코니아" → "지르코니아"
+  function parseMat(itemNm) {
+    if (!itemNm) return "기본";
+    let p = String(itemNm).indexOf("/") >= 0 ? String(itemNm).split("/").pop() : String(itemNm);
+    p = p.replace(/\(.*?\)/g, "").trim();
+    if (!p || /임플란트|보철|치과/.test(p)) return "기본";
+    return p;
+  }
+
+  // 의료기관별: 전체 금액(범위) + 재료별 대표가
   const byName = {};
   raw.forEach((it) => {
     const nm = get(it, NAME_KEYS); if (!nm) return;
-    const amts = [];
-    AMT_KEYS.forEach((k) => { const n = parseInt(String(it[k] == null ? "" : it[k]).replace(/[^0-9]/g, ""), 10); if (n >= PRICE_MIN && n <= PRICE_MAX) amts.push(n); });
-    if (amts.length) (byName[nm] = byName[nm] || []).push.apply(byName[nm], amts);
+    const lo = numIn(it, ["minAmt", "minPrc"]), hi = numIn(it, ["maxAmt", "maxPrc"]);
+    const single = numIn(it, ["curAmt", "amt", "prc", "npayAmt", "cmpAmt"]);
+    const vals = [lo, hi, single].filter((v) => v >= PRICE_MIN && v <= PRICE_MAX);
+    if (!vals.length) return;
+    const mat = parseMat(get(it, ITEM_KEYS));
+    const e = byName[nm] || (byName[nm] = { all: [], mats: {} });
+    vals.forEach((v) => e.all.push(v));
+    (e.mats[mat] = e.mats[mat] || []).push.apply(e.mats[mat], vals);
   });
   const names = Object.keys(byName);
   console.log("가격 있는 의료기관:", names.length);
@@ -105,8 +122,16 @@ function findRows(j) {
   const { clinics, sample } = store.load();
   const stat = { filled: 0, averaged: 0, dup: 0, inserted: 0, ambiguous: 0, junk: 0, invalid: 0 };
   names.forEach((nm) => {
-    const r = applyScrape(clinics, { name: nm, region: "인천", district: "연수구", price: median(byName[nm]), source: "npay/" + nm });
+    const e = byName[nm];
+    const price = median(e.all);
+    const r = applyScrape(clinics, { name: nm, region: "인천", district: "연수구", price: price, source: "npay/" + nm });
     stat[r.status] = (stat[r.status] || 0) + 1;
+    if (r.clinic) {
+      const lo = Math.min.apply(null, e.all), hi = Math.max.apply(null, e.all);
+      if (lo !== hi) { r.clinic.priceMin = lo; r.clinic.priceMax = hi; }
+      const mats = Object.keys(e.mats).map((m) => [m, median(e.mats[m])]).sort((a, b) => a[1] - b[1]);
+      if (mats.length > 1 || (mats[0] && mats[0][0] !== "기본")) r.clinic.mats = mats.slice(0, 8);
+    }
   });
   store.write(require("./dedupe.js").dedupeClinics(clinics), sample);
   console.log("✅ 비급여 포털 반영:", JSON.stringify(stat));

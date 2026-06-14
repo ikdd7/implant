@@ -365,3 +365,9 @@ footer{border-top:1px solid var(--line);margin-top:28px;padding:24px 0 40px;colo
 
 /* 가격 출처 주의문구 (심평원 신고가 ≠ 실제가) */
 .kk-caveat{margin:6px 0 2px;font-size:.74rem;line-height:1.4;color:#c9a227;opacity:.95}
+
+/* 재료별 임플란트가 */
+.kk-mats{margin:8px 0 2px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.kk-matst{width:100%;font-size:.72rem;color:#9aa4ba;margin-bottom:2px}
+.kk-mats span{font-size:.78rem;background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.25);border-radius:8px;padding:2px 8px}
+.kk-mats span i{font-style:normal;color:#9aa4ba}
