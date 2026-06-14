@@ -26,6 +26,7 @@ jobs:
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          ONLY_MISSING: "0"
         run: node homepages.js
       - name: Commit
         run: |
