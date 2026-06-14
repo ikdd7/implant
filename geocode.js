@@ -17,7 +17,7 @@ const { clinics, sample } = store.load();
 
 function req(url) {
   return new Promise((res, rej) => {
-    https.get(url, { headers: { Authorization: "KakaoAK " + KEY } }, (r) => {
+    https.get(url, { headers: { Authorization: "KakaoAK " + KEY, KA: "sdk/1.0.0 os/linux lang/ko-KR origin/https://ikdd7.github.io" } }, (r) => {
       let d = ""; r.on("data", (c) => (d += c));
       r.on("end", () => { try { res(JSON.parse(d)); } catch (e) { rej(e); } });
     }).on("error", rej);
