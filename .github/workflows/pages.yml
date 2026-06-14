@@ -6,6 +6,13 @@ on:
     branches:
       - claude/dental-clinic-map-incheon-i4t5sj
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Harvest clinics (연수구 치과 수확)"
+      - "HIRA implant prices (심평원 임플란트 비급여가)"
+      - "NPAY portal (심평원 비급여 포털 수집)"
+      - "Scrape clinic sites (홈페이지 게시가)"
+    types: [completed]
 
 permissions:
   contents: read
