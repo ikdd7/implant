@@ -1,0 +1,56 @@
+name: NPAY portal (심평원 비급여 포털 정찰/수집)
+
+# Actions 탭 → Run workflow. 1단계는 포털 구조 정찰(로그 확인용, 커밋 없음).
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "포털 진입 URL(선택)"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: clinics-write
+  cancel-in-progress: false
+
+jobs:
+  npay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: claude/dental-clinic-map-incheon-i4t5sj
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Playwright + Chromium
+        run: |
+          npm i playwright@1.56.1 --no-save --no-package-lock
+          npx playwright install --with-deps chromium
+      - name: Run npay discovery/collect
+        env:
+          NPAY_URL: ${{ inputs.url }}
+        run: node npay.js
+      - name: Commit (수집 모드일 때만 변경 발생)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add clinics.js region/ sitemap.xml
+          git checkout -- package.json package-lock.json 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "변경 없음(정찰 모드)"
+          else
+            git commit -m "심평원 비급여 포털 수집 (Actions)"
+            ok=0
+            for i in 1 2 3 4 5; do
+              git fetch origin claude/dental-clinic-map-incheon-i4t5sj || true
+              if git rebase origin/claude/dental-clinic-map-incheon-i4t5sj && git push origin HEAD:claude/dental-clinic-map-incheon-i4t5sj; then ok=1; break; fi
+              git rebase --abort || true
+              sleep $((i * 5))
+            done
+            [ "$ok" = 1 ] || { echo "push 실패"; exit 1; }
+          fi
