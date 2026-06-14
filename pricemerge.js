@@ -43,14 +43,25 @@ function nameOverlap(an, bn) {
   return sh.length >= 4 && lo.indexOf(sh) >= 0;
 }
 
-// 가격을 채울 대상 매칭: 이름 일치/포함 + 구 호환(단, 이름 완전일치는 구 무시).
+// 핵심 상호명: 끝의 치과/의원/병원류 접미어 제거(연세제일치과의원 → 연세제일)
+function core(s) {
+  return norm(s).replace(/(치과교정과치과의원|치과교정과의원|구강악안면외과치과의원|치과병원|치과의원|아동치과|어린이치과|치과|의원|병원)$/g, "");
+}
+// 가격을 채울 대상 매칭: 이름 일치/포함/핵심상호 일치 + 구 호환(완전일치는 구 무시).
 function matchClinic(v, p) {
   var a = norm(v.name), b = norm(p.name);
   if (!a || !b) return false;
   if (a === b) return true;                                  // 완전일치 → 구 무관
   if (p.district && v.district && v.district !== p.district) return false;
   var sh = a.length <= b.length ? a : b, lo = a.length <= b.length ? b : a;
-  return sh.length >= 4 && lo.indexOf(sh) >= 0;              // 포함 매칭(접두/접미/중간)
+  if (sh.length >= 4 && lo.indexOf(sh) >= 0) return true;    // 포함 매칭
+  var ca = core(a), cb = core(b);                            // 핵심 상호명 비교
+  if (ca && cb && ca.length >= 3) {
+    if (ca === cb) return true;
+    var cs = ca.length <= cb.length ? ca : cb, cl = ca.length <= cb.length ? cb : ca;
+    if (cs.length >= 3 && cl.indexOf(cs) === 0) return true; // 핵심상호 접두 일치
+  }
+  return false;
 }
 
 // 잡음(비-치과) 이름 컷 — dedupe.js와 동일 기준

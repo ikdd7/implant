@@ -121,11 +121,13 @@ function findRows(j) {
 
   const { clinics, sample } = store.load();
   const stat = { filled: 0, averaged: 0, dup: 0, inserted: 0, ambiguous: 0, junk: 0, invalid: 0 };
+  const log = { inserted: [], ambiguous: [], junk: [] };
   names.forEach((nm) => {
     const e = byName[nm];
     const price = median(e.all);
     const r = applyScrape(clinics, { name: nm, region: "인천", district: "연수구", price: price, source: "npay/" + nm });
     stat[r.status] = (stat[r.status] || 0) + 1;
+    if (log[r.status]) log[r.status].push(nm);
     if (r.clinic) {
       const lo = Math.min.apply(null, e.all), hi = Math.max.apply(null, e.all);
       if (lo !== hi) { r.clinic.priceMin = lo; r.clinic.priceMax = hi; }
@@ -135,4 +137,7 @@ function findRows(j) {
   });
   store.write(require("./dedupe.js").dedupeClinics(clinics), sample);
   console.log("✅ 비급여 포털 반영:", JSON.stringify(stat));
+  if (log.inserted.length) console.log("신규삽입(카카오에 없던 곳, geocode로 좌표 채움):", log.inserted.join(", "));
+  if (log.ambiguous.length) console.log("⚠️ 매칭 모호(보류):", log.ambiguous.join(", "));
+  if (log.junk.length) console.log("제외:", log.junk.join(", "));
 })();
