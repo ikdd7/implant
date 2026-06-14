@@ -29,7 +29,7 @@ function buildBody(csrf, page) {
     ["@d1#sidoNm", SIDO_NM], ["@d1#sgguNm", SGGU_NM], ["@d1#emdongNm", ""],
     ["@d1#clCd", ""], ["@d1#yadmNm", ""], ["@d1#npayCdNm", "임플란트"],
     ["@d1#npayCds", NPAY_CDS], ["@d1#npayLdivCd", ""], ["@d1#ykiho", ""],
-    ["@d1#totalRowCount", "0"], ["@d1#pageRowCount", "100"], ["@d1#viewPageCount", "5"],
+    ["@d1#totalRowCount", "0"], ["@d1#pageRowCount", "1000"], ["@d1#viewPageCount", "5"],
     ["@d1#currentPageIndex", String(page)], ["@d1#sortOrd", ""], ["@d1#npayCd", ""],
     ["@d1#xPos", "126.6782"], ["@d1#yPos", "37.4106"], ["@d1#isDev", "N"],
     ["@d1#schType", "npay"], ["@d1#schDtlTxt", ""],
@@ -70,7 +70,9 @@ function findRows(j) {
 
   // 인-페이지 fetch로 페이징 수집
   let raw = [], logged = false;
-  for (let pg = 1; pg <= 30; pg++) {
+  const seen = new Set();
+  const rowKey = (r) => [get(r, NAME_KEYS), get(r, ITEM_KEYS), r.minAmt, r.maxAmt, r.curAmt].join("|");
+  for (let pg = 1; pg <= 40; pg++) {
     const body = buildBody(csrf, pg);
     const res = await page.evaluate(async (args) => {
       const r = await fetch(args.path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" }, body: args.body, credentials: "include" });
@@ -85,8 +87,10 @@ function findRows(j) {
       logged = true;
     }
     if (!rows.length) { console.log("p" + pg + ": 행 없음 → 종료"); break; }
-    raw = raw.concat(rows);
-    if (rows.length < 100) break;
+    let added = 0;
+    rows.forEach((r) => { const k = rowKey(r); if (!seen.has(k)) { seen.add(k); raw.push(r); added++; } });
+    console.log("p" + pg + ": " + rows.length + "행 (신규 " + added + ")");
+    if (added === 0) break;            // 더 이상 새 행 없음 → 끝
     await page.waitForTimeout(300);
   }
   await browser.close();
